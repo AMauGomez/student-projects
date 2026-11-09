@@ -1,0 +1,428 @@
+---
+title: "Proyecto 1"
+date: "2023-05-26"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+subtitle: Modelos de Supervivencia y Series de Tiempo
+---
+
+```{r setup, include=FALSE}
+
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(here)
+library(forecast)
+library(aTSA)
+library(seasonal)
+library(quantmod)
+library(tseries)
+library(lubridate)
+library(multimode)
+```
+
+Suponga que usted se encuentra en diciembre 2018 y es el encargado de administrar un portafolio de inversión, usted debe elegir una acción para añadir al portafolio por lo que desea conocer un pronostico para el próximo año y medio para ver si es conveniente o no invertir $\$1,000,000$ de pesos en esta acción.
+
+El primer paso para extraer información es usar Yahoo Finanzas, ingrese al anterior link para que pueda consultar la información histórica de una acción que usted prefiera (Como preferencia podría iniciar investigando el precio de una onza e indexarlo al portafolio, ya que es una serie fácil
+de trabajar). Yahoo finanzas es una de las principales páginas en la que usted podrá consultar información financiera, en ella además le permitirá ver gráficamente los datos y lo más importante descargar los datos en formato csv. Descargue los datos históricos del **1 de enero de 2001** al **30 Junio de 2020**, y en frecuencia indique periodicidad mensual, guarde estos datos en su carpeta de trabajo e impórtelos en R.
+
+Con base a dichos valores realice.
+
+1. Descargue e importe los datos en R y con ellos convierta el vector de precios a un objeto de series de tiempo y vea el comportamiento de sus datos, es decir calcule la media, moda, cuartiles, máximos, mínimos y varianza. Haga una gráfica de caja para ver visualmente estos resultados.
+
+Nuestro interés está en ver la posibilidad de invertir en las acciones de [*CEMEX*](https://www.cemexmexico.com/) una empresa ligada al ámbito de la construcción que se autodenomina ser líder en la venta y producción de Cemento y otros materiales. Para saber si es una buena opción hacer está inversión revisaremos los datos históricos desde el *1 de enero de 2001* al *30 de junio de 2020*, usando algunos comandos y librerías de R extraeremos los datos desde [Yahoo! Finanzas](https://es-us.finanzas.yahoo.com/), tal como se muestra en el siguiente código:
+
+```{r results='hide', warning=FALSE}
+
+getSymbols("CX", src = "yahoo", from = "2001-01-01", to = "2020-06-30",
+           periodicity= "monthly")
+base <- CX[,6] # para solo usar la columna de los precios de cierre ajustados
+ts_base <- ts(base, start=2001, frequency = 12) # creamos el objeto de series de tiempo
+```
+
+Una vez que tenemos la base y el objeto series de tiempo comenzamos a hacer un análisis del comportamiento de los datos obteniendo algunos datos interesantes, que se pueden ver resumidos en la Tabla 1:
+
+```{r warning=FALSE,fig.align="center", fig.cap= "Tabla 1: Resumen del comportamiento de los datos", echo=FALSE, message=FALSE}
+
+media <- mean(ts_base)
+moda <- multimode::locmodes(ts_base, mod0 = 1)
+cuartiles <- quantile(ts_base,probs = c(0.25,0.5,0.75)) 
+maximo <- max(ts_base)
+minimo <- min(ts_base) 
+varianza <- var(ts_base)
+
+tabla_datos1 <- rbind(media, moda$locations,minimo,cuartiles[1],cuartiles[2],cuartiles[3],maximo,varianza)
+
+row.names(tabla_datos1) <- c("Media","Moda*","Mínimo","Cuartil 0.25","Mediana", "Cuartil 0.75","Máximo", "Varianza")
+
+colnames(tabla_datos1) <- c("Valores de la acción")
+
+a <- knitr::kable(tabla_datos1, digits = 3, align = "c") %>% 
+  kable_styling(full_width=F,position="center",latex_options = "HOLD_position")
+
+footnote(a,general="* = Es el valor de la locación estimada de la moda")
+
+```
+
+Como se muestra en la Tabla 1 el valor promedio de la acción es de `r round(media,3)`, además al graficar observamos que el mínimo se alcanza en *marzo de 2020* con valor al cierre ajustado de `r round(minimo,3)`, que como se puede inferir se debió a la pandemia, ya que, al entrar en confinamiento la producción y venta de cemento sufrió una disminución, después de tocar su mínimo desde 2001, la acción se revalúa y empieza a subir de precio, observamos que su mejor precio fue en *mayo de 2007* con un valor de  `r round(maximo,3)`, luego tuvo fluctuaciones y pendientes negativas que coinciden con los años de la crisis de 2008, la gripe porcina 2009, la recesión de 2012, una caída en 2016, y después una caída alcanzando su mínimo hasta la pandemia de COVID-19.
+
+Además a través de un gráfico de caja se puede ver el resumen de estas medidas, tal como se muestra en la Figura 1:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Boxplot de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+grafico_1 <- ggplot(base, aes( x = CX.Adjusted, y = "")) +
+  geom_boxplot(fill = "#390099", color = "black",outlier.colour= "#FFBD00" ,outlier.size=2) +
+  labs(x="Valor de la acción",y= "",caption = "Para el périodo del 01-01-2001 al 30-06-2020")+
+  ggtitle("Dispersón de la acción de CEMEX")+
+  coord_flip()+
+  theme_bw()
+  
+grafico_1
+```
+
+Graficamente, podemos observar que existe una gran cantidad de outliers, además hay 20 puntos de varianza con la media y el máximo, eso nos indica que esta muy lejos de el valor que llegó a tener la acción.
+
+2. Realice una gráfica de la serie de tiempo.
+
+Usando la libraría `ggplot()` se puede obtener la Figura 2: que representa la Serie de tiempo de la acción de Cemex:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Serie de Tiempo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+CX_base = data.frame(ts_base,time = seq(ISOdate(2001,01,01), 
+                                     ISOdate(2020,06,30),
+                                     by = "month"))
+
+ggplot(CX_base, aes(x = time, y = CX.Adjusted))+ #Se inicializa la gráfica
+  geom_line(color = "#390099") + #Se declara una gráfica de línea
+  labs(x = 'Tiempo', y = 'Precio de la acción', 
+       title = 'Serie de tiempo de la acción de CEMEX')
+
+
+```
+
+3. Use la función `BoxCox.lambda(x, lower=0.5)` de la paquetería `forecast` para hallar el exponente $\lambda$, tal que minimice la variabilidad en
+
+$$ x′_t = x^{\lambda}_t$$
+
+```{r}
+lambda <- BoxCox.lambda(ts_base, lower=0.5)
+```
+
+Usando dicho comando se puede obtener el valor de lambda que es: `r lambda`
+
+4. Una vez encontrado ese parámetro $\lambda$, realice la transformación logarítmica
+
+$$ x′_t = ln(x^{\lambda}_t)$$
+```{r}
+lambda_log <- BoxCox.lambda(log(ts_base), lower=0.5)
+```
+
+Con la transformación logaritmica el nuevo valor de lambda es: `r lambda_log`
+
+5. Haga un análisis de esta nueva transformación, es decir, calcule la media, moda, cuartiles, máximos, mínimos y varianza. Haga una gráfica de caja para ver visualmente estos resultados.
+
+Recalculando los datos con la transformación logaritmica se puede ver su resumen en la Tabla 2:
+
+```{r warning=FALSE,fig.align="center", fig.cap= "Tabla 2: Resumen del comportamiento de los datos con transformación logaritmica", echo=FALSE, message=FALSE} 
+
+media_log <- mean(log(ts_base))
+moda_log <- locmodes(log(ts_base), mod0 = 1)
+cuartiles_log <- quantile(log(ts_base),probs = c(0.25,0.5,0.75)) 
+max_log <- max(log(ts_base))
+min_log <- min(log(ts_base)) 
+varianza_log <- var(log(ts_base))
+
+tabla_datos2 <- rbind(media_log, moda_log$locations,min_log,cuartiles_log[1],cuartiles_log[2],cuartiles_log[3],max_log,varianza_log)
+
+row.names(tabla_datos2) <- c("Media","Moda*","Mínimo","Cuartil 0.25","Mediana", "Cuartil 0.75","Máximo", "Varianza")
+
+colnames(tabla_datos2) <- c("Valores de la acción")
+
+a <- knitr::kable(tabla_datos2, digits = 3, align = "c") %>% 
+  kable_styling(full_width=F,position="center",latex_options = "HOLD_position")
+
+footnote(a,general="* = Es el valor de la locación estimada de la moda")
+
+```
+
+Con los datos transformados vemos que en general se disminuye la variación de los datos, y se concentran de mejor manera.
+
+
+```{r}
+log_base=log(ts_base)
+```
+
+Si se revisa el boxplot vemos que esta idea permanece, el cual puede ser observado en la Figura 3:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Boxplot del logaritmo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+ggplot(log(base), aes( x = CX.Adjusted, y = "")) +
+  geom_boxplot(fill = "#390099", color = "black",outlier.colour= "#FFBD00" ,outlier.size=2) +
+  labs(x="Valor logaritmico de la acción de CEMEX",y= "",caption = "Para el périodo del 01-01-2001 al 30-06-2020")+
+  ggtitle("Dispersón de la acción de CEMEX")+
+  coord_flip()+
+  theme_bw(base_size = 12)
+```
+
+
+6. Grafique esta nueva serie de tiempo. ¿Observa las ventajas de realizar esta transformación?.
+
+La gráfica de la nueva serie de tiempo se puede observar en la Figura 4:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Serie de Tiempo del logaritmo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+CX_base_log = data.frame(log(ts_base),
+                         time = seq(ISOdate(2001,01,01),
+                                    ISOdate(2020,06,30),
+                                    by = "month"))
+
+ggplot(CX_base_log, aes(x = time, y = CX.Adjusted))+ #Se inicializa la gráfica
+  geom_line(color = "#390099") + #Se declara una gráfica de línea
+  labs(x = 'Tiempo', y = 'Precio del logaritmo de la acción', 
+       title = 'Serie de tiempo del logaritmo de la acción de CEMEX')
+```
+
+De aquí vemos, que se vuelve mucho más estable, se disminuyen los grandes saltos en el tiempo, haciendola más estacionaria.
+
+7. Realice una gráfica de descomposición aditiva para ver la tendencia, periodicidad y componente aleatorio asociado a los datos.
+
+En la Figura 5, es posible observar como varía la tendencia, periodicidad y el componente aleatorio de la serie para el logaritmo de esta acción:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Descomposición aditiva del logaritmo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+plot(decompose(log(ts_base), type="additive"), 
+     col = "#390099", 
+     lwd=2)
+```
+
+Aquí es claro notar, que la tendencia negativa de la acción y la periodicidad de la misma que es bastante constante.
+
+8. Realice una gráfica de descomposición multiplicativa para ver la tendencia, periodicidad y componente aleatorio asociado a los datos.
+
+La descomposición multiplicativa para el logaritmo de la acción de Cemex se puede observar en la Figura 6:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Descomposición multiplicativa del logaritmo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+plot(decompose(log(ts_base), type="multiplicative"), 
+     col = "#390099", 
+     lwd=2)
+```
+
+Para este caso, la descomposición multiplicativa coincide de forma considerable con la aditiva.
+
+9. De estas dos descomposiciones ¿Cuál es la mejor para sus datos y por qué?
+
+La mejor es la descomposicion multiplicativa en este caso, pues dado que la serie muestra un comportamiento no estacionario y aunque no es tan claro verlo en la original, al graficar el logaritmo de la serie se ve una tendencia claramente decreciente, la descomposicion multiplicativa permite modelar mejor la evolucion de la serie. 
+
+
+10. Realice una predicción de 18 meses hacia adelante usando el método de Holt-Winter aditivo. Grafique la predicción y guarde estas predicciones en una variable para posteriormente
+comparar los resultados.
+
+Creando el objeto `hw_ts` crearemos la predicción a los 18 meses usando la base transformada, de aquí obtenemos la gráfica con las predicciones que se pueden observar en la Figura 7:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Método de Holt-Winter aditivo del logaritmo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+hw_ts= hw(log(ts_base), h=18, seasonal='additive')
+
+plot(log(ts_base), type='l',col = "#390099", lwd = 2,
+     xlab = 'Tiempo', ylab = 'Precio de la acción',
+     main = "Serie de tiempo de la acción de CEMEX \n Suavización Holt Winters")
+lines(hw_ts$fitted, col='#ff0054', lwd = 2)
+```
+
+11. Con la serie transformada ¿Se puede asumir que la serie es estacionaria?
+
+Para responder a esta pregunta revisaremos el gráfico `ggseasonal()` para ver la estacionariedad, el cual se puede apreciar en la Figura 8:
+
+```{r out.width="80%", fig.align="center", fig.cap= "Logaritmo de la acción de CEMEX", echo=FALSE, message=FALSE , warning=FALSE}
+
+ggseasonplot(log(ts_base),
+             polar=TRUE, 
+             main="Estacionariedad del valor de la acción de CEMEX")+
+  labs(x="Meses",
+       y= "Valor de la acción",
+       caption = "Para el périodo del 01-01-2001 al 30-06-2020",
+       color = "Años")+
+  scale_color_manual(values = rainbow(20))+
+  theme_bw()
+```
+
+De la figura anterior, es posible observar que no es muy estacionaria la serie, por lo que sería bueno seguir transformandola.
+
+
+12. Si concluyó que la serie no es estacionaría encuentre el orden de diferenciación que le permita pasar de una serie no estacionaria a una estacionaria.
+
+Primero utilizamos la función de la libreria forecast llamada ndiffs que nos da el número de diferenciaciones que debemos hacer paraq que la serie sea estacionaria 
+
+```{r}
+dorito=ndiffs(log(ts_base))
+dorito
+```
+
+Como podemos observar el número de diferenciaciones que debemos hacer es 1, el cual llamaremos dorito1
+
+```{r}
+dorito1=diff(log_base, lag=1 )
+plot(dorito1,col = "seagreen")
+```
+
+
+```{r}
+ggseasonplot(dorito1,polar=TRUE,main="Estacionariedad" )
+```
+
+
+Comparamos la diferenciación con la base original para ver los cambios, dado que el número de diferecniaciones es 1, tenemos que nuestro ARIMA(p,1,q)
+
+```{r}
+par(mfrow=c(2,2))
+plot(dorito1, type="l",col="seagreen")
+plot(ts_base, type="l",col="darkred")
+```
+
+
+
+  13. Compare estos resultados con la prueba Dickey-Fuller Test adf.test()
+  
+```{r}
+adf.test(dorito1)
+```
+
+Como podemos observar se rechaza la hipotesis nula, es decir, $H_0$= No es estacionaria vs $H_1$= Es estacionaria, por lo tanto se concluye que la base con la transformación dorito 1 es esatcionaria.
+
+
+  14. Con la serie diferenciada y con un 99% de confianza muestre el orden que debe ajustar a un AR(p).
+
+
+```{r}
+pacf(dorito1,ci = 0.99, main = "Autocorrelación Parcial de la Serie Estacionaria")
+```
+
+Como podemos observar, ninguna linea del autocorrelograma parcial se sale del margen al 99% de confianza, es decir el valor de $p=0$, es decir AR(0).
+
+15. Con la serie diferenciada y con un 99% de confianza muestre el orden que debe ajustar a un MA(q).
+
+
+```{r}
+acf(dorito1,ci = 0.99, main = "Autocorrelación de la Serie Estacionaria") 
+```
+
+Para el autocorrelograma al 99% de confianza notamos que ninguna linea se sale, es decir MA(0).
+
+16. Escriba el modelo ARIMA, y si es posible pruebe dos modelos.
+
+```{r}
+# Ya sabemos que el orden de diferenciacion es 1, por lo que el segundo parametro debe ser 1. Ahora veamos estos dos modelos:
+
+# Este modelo surge de observar 0 lineas que se salen en el PACF y en el ACF al 99% de confianza
+modelo1=arima(log(ts_base), order=c(0,1,0), include.mean = FALSE)
+modelo1
+
+# El modelo siguiendo el criterio pero al 95% de confianza
+modelo2=arima(log(ts_base), order=c(1,1,1), include.mean = FALSE)
+modelo2
+
+# Este modelo surge de considerar que, al 95%, hay una linea que no sale pero "casi". Aqui la contamos como si si saliera
+modelo3=arima(log(ts_base), order=c(1,1,2), include.mean = FALSE)
+modelo3
+
+# A continuacion, puede observarse ese PACF y ACF sin introducir un nivel de confianza
+```
+
+
+```{r}
+pacf(dorito1,ci = 0.95, main = "Autocorrelación Parcial de la Serie Estacionaria al 95%")
+
+acf(dorito1,ci = 0.95, main = "Autocorrelación de la Serie Estacionaria al 95%")
+```
+
+
+17. Con el mejor modelo realice un pronóstico 18 valores hacían adelante
+
+Guiandonos por el AIC, es inmediato concluir que por mucho, el mejor modelo es el segundo o si no el tercero; es decir lo mas factible es que sea el ARIMA(1,1,1) y si no, seria el ARIMA(1,1,2). ya que los AIC de los 3 son:
+
+|  Modelo  | ARIMA  | AIC       |
+|----------|--------|-----------|
+|  1       | 0,1,0  | -285.63   |
+|  2       | 1,1,1  | -288.31   |
+|  3       | 1,1,2  | -287.63   |
+
+```{r}
+pronostico <- forecast::forecast(modelo2,18)
+plot(pronostico,main="Predicciones de 18 valores con el Modelo ARIMA(1,1,1)",col="darkgreen")
+```
+
+18. Ejecute la función auto.arima con los datos transformados (sin las diferenciaciones). ¿El modelo
+resultante le parece mejor que el que encontró?
+
+```{r}
+(  autoarima<-auto.arima(log(ts_base))  )
+```
+
+la prediccion con este modelo se ve:
+```{r}
+pronostico.autoarima <- forecast::forecast(autoarima,18)
+plot(pronostico.autoarima,main="Predicciones de 18 valores con el Modelo AUTOARIMA",col="seagreen")
+```
+
+
+La prediccion se ve identica, sin embargo el auto.arima mejoro el AIC un poquito. El autoarima tiene un AIC de -282.17. Por lo que sigue solido el que el mejor modelo es o bien el ARIMA (1,1,1) o bien el ARIMA (1,1,2)
+
+19. Con las predicciones más adecuadas realicé la transformación inversa para tener a los datos originales
+
+$$ x_t = exp(x'_t)^{(1/lambda)} $$
+```{r}
+x<-exp(as.data.frame(pronostico)[,1] )^(1/lambda)
+x
+```
+
+20. Consulte los datos reales del precio de la onza de oro de 2019 hasta junio 2020 y diga cual estimación
+fue la mejor de todas.
+
+```{r}
+getSymbols("CX", src = "yahoo", from = "2019-01-01", to = "2020-06-30",
+           periodicity= "monthly")
+base1920 <- CX[,6] # para solo usar la columna de los precios de cierre ajustados
+ts_base_1920 <- ts(base1920, start=2019, frequency = 12) # creamos el objeto de series de tiempo
+
+# Datos Reales
+ts_base_1920
+```
+
+Echemosle un vistazo a esos precios reales
+```{r}
+plot(ts_base_1920,col="#977328")
+```
+Para decir cual fue la mejor estimacion de todas, no perdemos nada en comparar las 4 estimaciones con los datos reales. La prediccion con cada modelo es:
+
+```{r}
+# Modelo.a: AUTO.ARIMA
+   pred.a <- forecast::forecast(autoarima,18)           
+   pronostico.a <- exp(as.data.frame(pred.a)[,1] )^(1/lambda)           # Transformacion para tener los datos en la escala original
+(  pronostico.a <-ts(pronostico.a, start=2019, frequency = 12)  )  
+
+# Modelo1: ARIMA(0,1,0)
+   pred1 <- forecast::forecast(modelo1,18)           
+   pronostico1 <- exp(as.data.frame(pred1)[,1] )^(1/lambda)           # Transformacion para tener los datos en la escala original
+(  pronostico1 <-ts(pronostico1, start=2019, frequency = 12)  )                        # Predicciones
+
+# Modelo2: ARIMA(1,1,1)
+   pred2 <- forecast::forecast(modelo2,18)           
+   pronostico2 <- exp(as.data.frame(pred2)[,1] )^(1/lambda)           # Transformacion para tener los datos en la escala original
+(  pronostico2 <-ts(pronostico2, start=2019, frequency = 12)  )                        # Predicciones
+
+# Modelo3: ARIMA(1,1,2)
+   pred3 <- forecast::forecast(modelo3,18)           
+   pronostico3 <- exp(as.data.frame(pred3)[,1] )^(1/lambda)           # Transformacion para tener los datos en la escala original
+(  pronostico3 <-ts(pronostico3, start=2019, frequency = 12)  )  
+```
+
+En base a los datos que realmente ocurrieron, el mejor modelo fue el 3: el ARIMA(1,1,2)
+
+
+21. ¿Le podría haber resultado conveniente invertir ese 1, 000, 000 de pesos en diciembre 2018?
+
+No! Para nada hubiera sido conveniente invertir 1 000 000 pesos en diciembre 2018, en su lugar habria sido excelente elegir una venta en corto.  Entre mas paciencia hubiesemos tenido, mayor habria sido la ganancia. 
+
+OBSERVESE que dicha estrategia, la habria respaldado claramente el modelo ARIMA(1,1,2) . Y evidentemente, no se habria equivocado

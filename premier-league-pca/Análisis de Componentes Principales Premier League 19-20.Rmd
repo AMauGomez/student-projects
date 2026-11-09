@@ -1,0 +1,174 @@
+---
+title: "Análisis de Componentes Principales Premier League 19-20"
+author: "Gómez Jiménez Aaron Mauricio"
+date: "2023-04-09"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+---
+
+```{r, include=FALSE, message=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(stats)
+library(FactoMineR)
+library(factoextra)
+library(psych)
+```
+
+```{r, include=FALSE, message=FALSE, results=F}
+base = read_excel("EPL_19_20.xlsx")
+datos= data.frame(base)
+head(datos)
+```
+
+Con el objetivo de identificar las variables que son de mayor importancia para ser campeón en la Premier League, realizaremos un análisis de componentes principales, como marco referencial el campeón de esta liga es el equipo que más partidos ganados tenga a lo largo de los 38 partidos de la temporada.
+
+
+Realizando un análsis exploratorio de estadísticas básicas obtenemos los siguientes resultados
+
+```{r, warning=FALSE}
+resumen<-describe(datos, fast=TRUE)
+resumen
+```
+ Donde W es el número de partidos ganados, D partidos empatados, L partidos perdidos, GF goles a favor, GA goles en contra y GD la diferencia de goles a favor menos goles en contra.
+ 
+### Partidos Ganados ###
+
+```{r, fig.width=12, fig.height=6}
+ganados_1<-ggplot(datos[1:10,], aes(x = Team, y = W, fill=Team)) + 
+  geom_boxplot() + theme(legend.position = "none")
+ganados_1
+```
+
+
+```{r, fig.width=12, fig.height=6}
+ganados_1.1<-ggplot(datos[11:20,], aes(x = Team, y = W, fill=Team)) + 
+  geom_boxplot() + theme(legend.position = "none")
+ganados_1.1
+```
+
+
+El equipo que obtuvo mayor número de victorias fue el Liverpool, seguido del Manchester City, y los que menos partidos ganaron fueron Norwich City y Watford, el promedio de juegos ganados fue de 15 partidos con 52 goles en promedio por equipo para toda la temporada, con una media de 27 goles por jornada, es decir casi 3 goles por partido en promedio.
+
+
+### Diferencia de goles ###
+
+```{r, fig.width=12, fig.height=6}
+diferencia_1<-ggplot(datos[1:10,], aes(x = Team, y = GD, fill=Team)) + 
+  geom_boxplot() + theme(legend.position = "none")
+diferencia_1
+```
+
+
+```{r, fig.width=12, fig.height=6}
+diferencia_1.1<-ggplot(datos[11:20,], aes(x = Team, y = GD, fill=Team)) + 
+  geom_boxplot() + theme(legend.position = "none")
+diferencia_1.1
+```
+
+El equipo que mejor diferencia de goles tiene fue el Manchester City seguido del campeón de esa temporada, el Liverpool, y los que peor diferencia de goles tienen son nuevamente el Norwich City y Watford.
+
+```{r, include=FALSE}
+rownames(datos)=datos$Team
+datos$Team= NULL
+```
+
+## Análisis de Componentes Principales ##
+
+Para realizar el análisis de componentes principales es necesario tener la matriz de datos, 
+tambien es recomendable estandarizar los datos.
+
+
+Haciendo el PCA centrado y escalado obtenemos
+
+```{r}
+PCA_centrado<-prcomp(datos, center=TRUE, scale=TRUE)
+```
+
+Primero revisaremos los eigenvalues resultantes del PCA para ver la proporción de varianza explicada por cada componente y decidir con que número de componentes nos quedamos, utilizaremos la regla de Kaiser, es decir, eigenvalues mayores a 1, además nuscamos una varianza acumulada mayor al 90%.
+
+```{r}
+eigenvalues<-get_eigenvalue(PCA_centrado)
+eigenvalues
+```
+
+
+Podemos notar que el número de componentes de acuerdo a los criterios es 2 componentes. Haciendo un análisis gráfico.
+
+
+```{r, fig.width=8, fig.height=3}
+fviz_screeplot(PCA_centrado, main="Gráfico de Componentes", addlabels=TRUE)
+```
+
+
+Ahora nos centraremos en la contribución de las variables a cada componente, poniendo especial atención en los dos primeros componentes 
+
+```{r}
+varianza<-get_pca_var(PCA_centrado)
+head(varianza$contrib)
+```
+
+
+```{r, fig.width=7, fig.height=3 }
+par(mfrow = c(1, 2))
+fviz_contrib(PCA_centrado, choice = "var", axes = 1, top = 6)
+fviz_contrib(PCA_centrado, choice = "var", axes = 2, top = 6)
+```
+Podemos notar que para el primer componente 5 variables superan el 16.6, es decir estan sobre la media esperada sobre la contribución de cada variable, para el segundo componente solo la variable D tiene contribución muy significativa.
+
+
+```{r, fig.width=7, fig.height=4}
+fviz_pca_var(PCA_centrado, col.var = "contrib", repel =TRUE,gradient.cols = c("lightblue", "purple", "blue"))
+```
+
+Como podemos observar lo que mas valor le da al primer componente es el numero partidos perdidos y goles en contra es decir cosas negativas en el sentido futbolistico, inversamente los partidos ganados y goles a favor los pondera por igual, para el segundo componente observamos que el mas significativo es el numero de empates, asi concluimos que entre mas a la izquierda y arriba mejor es la posición en la tabla del equipo.
+
+Obteniendo las coordenadas
+
+```{r}
+PCA_centrado$rotation
+```
+Para el primer componente notamos que los partidos ganados w, los goles a favor GF, y la diferencia de goles GD tienen la misma dirección y los pondera por igual en el primer componente, de esta manera sospechamos que hay algun tipo de cluster estre las variables con signo positivo y negativo. Para el segundo componente notamos que los partidos empatado D, tienen un gran peso siendo la unica significativa con signo negativo.
+
+
+
+### Análisis Individual ###
+
+Podemos ver la influencia de cada observación en los componentes principales
+
+```{r}
+ind<-get_pca_ind(PCA_centrado)
+ind$contrib[1:10,1:2]
+```
+
+
+
+```{r, fig.width=7, fig.height=4}
+fviz_pca_ind(PCA_centrado, col.ind = "contrib", 
+             gradient.cols = c("pink", "violet","purple" , "red"),
+             col.var="green",
+             repel = TRUE
+             )
+```
+
+Aqui podemos observar que aunque el Arsenal, Wolves y Brighton tuvieron el mismo numero de empates, lo que les cambio la ubicación en el plot es que wolves gano 15 partidos, mientras Arsenal 14 y Brighton 9.
+
+```{r, 
+}
+fviz_pca_biplot(PCA_centrado, repel = TRUE,
+                col.var = "red", 
+                col.ind = "blue" 
+                )
+```
+
+### Conclusiones ###
+
+Podemos concluir que bastan 2 componentes para explicar el 96% de la varianza de los datos,  las varaibles que influyen en mayor cantidad para el primer componente son GD, W, GF, L , GA en ese orden y para el segundo componente la variable D influye en un 85% siendo la única significativa para el segundo componente, de forma que en el biplot entre más a la izquierda y arriba este los equipos mayor es la cantidad de partidos gandos, entre más arriba mayor es el número de goles que tuvieron a su favor, en contraparte entre más abajo este ubicados los equipos mayor es el número de partidos perdidos, entre más a la izquierda su diferencia de goles es cercana a cero o negativa.
+
+
+Es importante notar que para la primer componente la diferencia de goles es la que mayor contribución tiene, seguida de los partidos ganados, lo cual puede parecer contraintuitivo, sin embargo estas dos variable y los goles a favor van en la misma dirección lo cual es lógico ya que son variables que consideramos positivas para nuestro objetivo, y para la segunda componente vemos que el vector de los partidos empatados esta a 90 grados con la variable GD lo cual no quiere indicar que no existe relación entre las variables, pero la variable D es la que mayor peso tiene en la segunda componente.
+

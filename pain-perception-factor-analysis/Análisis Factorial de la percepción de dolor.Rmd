@@ -1,0 +1,185 @@
+---
+title: "Análisis Factorial de la percepción de dolor"
+author: "Gómez Jiménez Aaron Mauricio"
+date: "2023-04-12"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r, include=FALSE, message=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(stats)
+library(FactoMineR)
+library(factoextra)
+library(psych)
+library(ggcorrplot)
+library(ggplot2)
+library(GGally)
+library(GPArotation)
+library(qgraph)
+```
+
+
+Considera la matriz de correlación dada, entre ratings de 9 enunciados acerca del dolor hechos por 123 personas sufriendo de dolor extremo. A cada uno de los 9 enunciados se le dio un valor del 1 al 6 (completamente de acuerdo, muy de acuerdo, de acuerdo, en desacuerdo, muy en desacuerdo, completamente en desacuerdo), siendo los enunciados los siguientes:
+
+a. Si en el futuro tengo o no dolor depende de la habilidad y conocimiento de mis médicos.
+
+b. Cuando tengo dolor, es usualmente a causa de algo que hice o que dejé de hacer.
+
+c. Si tengo o no dolor depende de lo que los médicos hagan por mi.
+
+d. No puedo obtener ayuda para mi dolor a menos de que busque atención médica.
+
+e. Cuando tengo dolor sé que es a causa de que no he hecho el ejercicio adecuado ni he comido de forma adecuada.
+
+f. El dolor de las personas resulta de su imprudencia.
+
+g. Soy directamente responsable de mi dolor.
+
+h. Alivio del dolor es controlado principalmente por los médicos.
+
+i. Personas que no tienen dolor son meramente afortunadas.
+
+
+```{r, include=FALSE, message=FALSE, results=F}
+base = read_excel("matriz de correlación FA.xlsx")
+datos= data.frame(base)
+x<-c("a","b","c", "d", "e", "f","g", "h","i")
+datos<-rename(datos, "a"=Column1, "b"=Column2, "c"=Column3, "d"=Column4, "e"=Column5, "f"=Column6, "g"=Column7, "h"=Column8, "i"=Column9 )
+row.names(datos)<- x
+
+```
+
+Como podemos observar, tenemos una matriz de correlación entre las puntuaciones obtenidas entre los enunciados anteriores, haremos uncorrelograma para que sea más facil visualizar los datos
+
+
+```{r}
+ ggcorrplot(datos,type="lower",hc.order = F,lab = TRUE)
+```
+
+
+Ahora verificaremos que exista la suficiente correlación entre las variables para poder hacer un analisis factorial, es decir estamos buscando que exista el factor común entre todas la variables, haciendo una prueba Kaiser-Meyer-Olkin, obtenemos los siguientes resultados
+
+```{r}
+KMO(datos)
+```
+
+0.74 es una medida aceptable por lo tanto podemos seguir con el analisis factorial, ahora seleccionaremos 2 formas de extraer factores: Por máxima verosimilitud y por  minimos residuales.
+
+### Número de Factores ###
+
+
+Antes veamos cuantos factores son necesarios para nuestro analisis factorial, para ello revisaremos los eigenvalores de la matriz de correlacion.
+
+```{r}
+autovalores=eigen(datos)
+varianzatotal=autovalores$values/sum(autovalores$values)*100
+autovalores
+varianzatotal
+```
+
+Basandonos en la regla o criterio de Kaiser, tomaremos lo eigenvalores mayores a 1, en este caso son 2 y podría incluirse el tercer factor ya que es cercano a 1 y la regla no es estricta sino una referencia de selección.
+
+Si ahora nos apoyamos en el porcentaje de varianza explicada notamos que con 3 factores obtenemos un 70%
+
+```{r}
+sum(varianzatotal[1:3])
+```
+
+Y con 2 factores 60%
+
+
+```{r}
+sum(varianzatotal[1:2])
+```
+
+
+Por último realizamos un Scree plot para analizar gráficamente donde se observa la curva o "regla del codo" 
+
+```{r}
+scree(datos)
+```
+
+
+Notamos que en el 2 factor existe un cambio de dirección notable, por lo cual y ya que no existe una diferencia significativa en la explicación de la variaza, seleccionaremos solo 2 factores ya que tambien es más intuitiva su interpretación.
+
+### Tipo de Rotación de la Matriz Factorial y Método de Extracción de Factores ###
+
+
+Seleccionaremos la rotación del tipo equamax ya que combina el método varimax y quartimax, es decir, minimiza el número de factores y hace más fa´cil su visulaización. 
+
+Para el método de extración utilizaremos el de máxima verosimilitud y el de mínimo residuo y compararemos los resultados.
+
+Haciendo el análisis de factores con 2 factores y rotación quartimax obtenemos:
+
+```{r}
+af_ver=fa(datos, nfactors = 2,  rotate ="quartimax", fm="mle" )
+af_minres=fa(datos, nfactors = 2, rotate ="quartimax", fm="minres" )
+```
+
+### Análisis Factorial Quartimax- MinRes ###
+
+```{r}
+af_minres$loadings
+```
+
+```{r}
+biplot(af_minres$score.cor, loadings(af_minres), cex=c(0.7,0.8), col = c("grey", "red"), 
+  xlab = "Factor 1", ylab = "Factor 2", 
+  main = "Análisis Factorial Quartimax- MinRes")
+```
+
+
+```{r, fig.width=8, fig.height=5}
+qgraph.loadings(af_minres$loadings)
+```
+
+```{r, fig.width=8, fig.height=5}
+fa.diagram(af_minres, main="Analisis Factorial por Quartimax- MinRes")
+```
+
+
+### Análisis Factorial Quartimax- MLE ###
+
+```{r}
+af_ver$loadings
+
+```
+
+```{r}
+biplot(af_minres$score.cor, loadings(af_minres), cex=c(0.7,0.8), col = c("grey", "blue"), 
+       xlab = "Factor 1", ylab = "Factor 2", 
+       main = "Análisis Factorial Quartimax- MLE")
+```
+
+```{r, fig.width=8, fig.height=4.8}
+qgraph.loadings(af_ver$loadings)
+```
+
+
+
+```{r, fig.width=8, fig.height=4.8}
+fa.diagram(af_ver, main="Analisis Factorial por Quartimax- MLE")
+```
+
+## Conclusiones ##
+
+### Factor 1 ###
+Como podemos observar ambos análisis nos entregan resultados muy parecidos, ya que ambos métodos clasifican los enunciados a, c, d, h, i para este factor, en lo que difiere el método de mínimo residual y máxima verosimilitud es en el valor que pondera las relaciónes, sin embargo coinciden en el porcentaje de varianza explicada, ya que este factor nos explica el 27% de la varianza, revisando a que se debe este cluster podemos notar que todos los enunciados de este factor estan relacionados con la atención médica.
+
+En conclusión este factor lo podríamos clasificar como Responsabilidad sobre el dolor asociada a los médicos.
+
+### Factor 2 ###
+
+El segundo factor aporta un 21 % más de varianza explicada, este factor esta relacionado con los enunciados g, f, e, b creando un cluster de enunciados sobre la autopercepción del dolor y la responsabilidad relacionada a el dolor.
+
+Este factor sería sobre la Percepción de la autoresponsabilidad del dolor.
+
+
+
+
+
+
